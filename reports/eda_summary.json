@@ -1,0 +1,27 @@
+{
+  "dataset_name": "CICIDS2017",
+  "row_count": 692703,
+  "column_count": 79,
+  "target_column": "Label",
+  "class_distribution": {
+    "BENIGN": 440031,
+    "DoS Hulk": 231073,
+    "DoS GoldenEye": 10293,
+    "DoS slowloris": 5796,
+    "DoS Slowhttptest": 5499,
+    "Heartbleed": 11
+  },
+  "missing_value_columns": [
+    "Flow Bytes/s"
+  ],
+  "infinite_value_columns": [
+    "Flow Packets/s",
+    "Flow Bytes/s"
+  ],
+  "duplicate_rows": {
+    "duplicate_count": 81909,
+    "duplicate_pct": 11.825
+  },
+  "leakage_prone_columns": [],
+  "high_correlation_pair_count": 25
+}

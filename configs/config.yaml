@@ -1,0 +1,33 @@
+# Central configuration for the NIDS project.
+# Nothing in src/ or scripts/ should hardcode paths — everything reads from here.
+
+project:
+  name: NIDS
+  student: Krishkumar (2401CS83)
+
+dataset:
+  # ASSUMPTION: CICIDS2017, using the smaller daily CSV subsets rather than the full dump.
+  # If CICIDS2017 gives you trouble on Day 1, switch this to "NSL-KDD" — see README.
+  name: CICIDS2017
+  raw_dir: data/raw
+  interim_dir: data/interim
+  processed_dir: data/processed
+  # CICIDS2017 CSVs use "Label" as the class column, but some mirrors have a
+  # leading space (" Label"). load_dataset.py strips whitespace from all
+  # column names, so "Label" is enough here.
+  target_column: Label
+
+reports:
+  figures_dir: reports/figures
+  metrics_dir: reports/metrics
+  eda_report_md: reports/EDA_REPORT.md
+  eda_summary_json: reports/eda_summary.json
+
+analysis:
+  correlation_threshold: 0.90   # pairs at or above this are reported as "highly correlated"
+  top_correlated_pairs: 25      # cap on how many pairs to list/plot
+  top_features_to_plot: 6       # numeric features to show distribution plots for
+
+logging:
+  level: INFO
+  log_file: logs/nids.log
