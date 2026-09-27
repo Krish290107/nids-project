@@ -31,3 +31,16 @@ analysis:
 logging:
   level: INFO
   log_file: logs/nids.log
+
+preprocessing:
+  test_size: 0.20
+  random_state: 42
+  drop_leakage_columns: true
+  drop_correlated_features: true
+  correlation_threshold: 0.90
+  balancing_method: smote         # smote | class_weight | none
+  smote_k_neighbors: 5
+  artifact_path: models/preprocessing_pipeline.joblib
+  processed_dir: data/processed
+  interim_dir: data/interim
+  summary_path: reports/metrics/preprocessing_summary.json
