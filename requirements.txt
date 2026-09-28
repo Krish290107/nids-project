@@ -16,3 +16,4 @@ fastapi>=0.115.0
 uvicorn>=0.30.0
 streamlit>=1.38.0
 shap>=0.46.0
+httpx2

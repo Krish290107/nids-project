@@ -61,3 +61,10 @@ training:
     n_estimators: 100
     max_depth: 8
     learning_rate: 0.1
+
+api:
+  host: 127.0.0.1
+  port: 8000
+  benign_label: BENIGN
+  db_path: logs/predictions.db
+  max_batch_size: 1000

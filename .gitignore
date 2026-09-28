@@ -30,6 +30,8 @@ models/*.joblib
 # Logs
 logs/*.log
 !logs/.gitkeep
+logs/*.db
+
 
 # Secrets
 .env
