@@ -44,3 +44,20 @@ preprocessing:
   processed_dir: data/processed
   interim_dir: data/interim
   summary_path: reports/metrics/preprocessing_summary.json
+
+training:
+  models_to_train: [random_forest, xgboost]
+  selection_metric: macro_f1        # macro_f1 | weighted_f1 | accuracy
+  random_state: 42
+  max_train_rows: null              # e.g. 300000 to subsample if training is too slow / out of memory
+  save_all_models: false            # true also saves random_forest.pkl and xgboost.pkl (can be large)
+  model_path: models/model.pkl
+  metrics_path: reports/metrics/model_metrics.json
+  report_path: reports/MODEL_REPORT.md
+  random_forest:
+    n_estimators: 100
+    max_depth: null
+  xgboost:
+    n_estimators: 100
+    max_depth: 8
+    learning_rate: 0.1
