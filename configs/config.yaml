@@ -68,3 +68,10 @@ api:
   benign_label: BENIGN
   db_path: logs/predictions.db
   max_batch_size: 1000
+
+replay:
+  interval_seconds: 0.5
+  default_count: 200
+  shuffle: true
+  random_state: 42
+  summary_path: reports/metrics/replay_session_summary.json
