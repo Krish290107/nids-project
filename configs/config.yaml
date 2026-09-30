@@ -75,3 +75,8 @@ replay:
   shuffle: true
   random_state: 42
   summary_path: reports/metrics/replay_session_summary.json
+
+dashboard:
+  port: 8501
+  recent_predictions_limit: 100
+  refresh_interval_seconds: 3
