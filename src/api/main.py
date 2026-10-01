@@ -9,6 +9,7 @@ Endpoints:
     GET  /model-info          model name, classes, required feature names
     POST /predict             classify one flow
     POST /predict/batch       classify many flows at once
+    POST /explain             classify one flow and show which features drove the answer (SHAP)
     GET  /predictions/recent  latest logged predictions
     GET  /stats               counts per predicted class
 """
@@ -21,8 +22,15 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
+from src.api.explain import DEFAULT_TOP_K, FlowExplainer
 from src.api.inference import InferenceService, MissingFeaturesError
-from src.api.schemas import BatchRequest, BatchResponse, FlowRequest, PredictionResponse
+from src.api.schemas import (
+    BatchRequest,
+    BatchResponse,
+    ExplanationResponse,
+    FlowRequest,
+    PredictionResponse,
+)
 from src.api.storage import PredictionStore
 from src.utils.logging_config import get_logger
 from src.utils.paths import load_config, resolve_path
@@ -53,6 +61,7 @@ def create_app(
         # loaded once at startup, not per request
         app.state.service = InferenceService.from_files(model_path, preprocessing_path, benign_label)
         app.state.store = PredictionStore(db_path)
+        app.state.explainer = None  # built on the first /explain call (SHAP is slow to import)
         yield
 
     app = FastAPI(
@@ -105,6 +114,23 @@ def create_app(
             "attacks_detected": sum(p["is_attack"] for p in predictions),
             "predictions": predictions,
         }
+
+    @app.post("/explain", response_model=ExplanationResponse)
+    def explain(payload: FlowRequest, request: Request, top_k: int = DEFAULT_TOP_K):
+        """Predict one flow AND show which features pushed the model toward its answer (SHAP).
+        Slower than /predict, and not logged to the prediction database."""
+        service: InferenceService = request.app.state.service
+        explainer = request.app.state.explainer
+        if explainer is None:
+            try:
+                explainer = FlowExplainer(service)
+            except ImportError as exc:
+                raise HTTPException(status_code=501, detail="SHAP is not installed. Run: pip install shap") from exc
+            request.app.state.explainer = explainer
+        try:
+            return explainer.explain([payload.features], top_k=max(1, min(top_k, 30)))[0]
+        except MissingFeaturesError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.get("/predictions/recent")
     def recent_predictions(request: Request, limit: int = 50):

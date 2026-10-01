@@ -28,8 +28,7 @@ Per-class results for the selected model:
 | DoS Slowhttptest | 0.9905 | 0.9971 | 0.9938 | 1,046 |
 | Heartbleed | 1.0000 | 1.0000 | 1.0000 | **2** (see limitations) |
 
-![Confusion matrix](reports/figures/confusion_matrix_random_forest.png)
-![Model comparison](reports/figures/model_comparison.png)
+![Confusion matrix (row-normalized), from the dashboard](docs/chartjs_confusion_matrix.png)
 
 Full tables, top features and plots: `reports/MODEL_REPORT.md`, `reports/EDA_REPORT.md`,
 `reports/figures/`.
@@ -96,19 +95,6 @@ to the test split. Otherwise test information leaks into training and the scores
 Everything the API needs at inference time (medians, scaler, exact column order, label encoder)
 is saved in `models/preprocessing_pipeline.joblib`, so live traffic goes through identical steps.
 
-## Demo
-
-One command starts the API, the dashboard and a traffic replay together (after you have run
-preprocessing and training once, see *Quick start*):
-
-```
-python scripts/run_demo.py
-```
-
-It opens the dashboard in your browser and streams held-out flows into the API until you press
-Ctrl+C, which stops everything cleanly. Useful options: `--count 300` (send 300 flows, then keep
-the servers up) and `--interval 0.2` (faster arrival).
-
 ## Quick start
 
 ```
@@ -129,9 +115,7 @@ check that the whole pipeline runs. Delete it once you have the real data.
 
 If training is slow or runs out of memory, set `training.max_train_rows` in `configs/config.yaml`.
 
-### Run the live demo step by step (three terminals)
-
-The same thing as `python scripts/run_demo.py`, but with each part in its own terminal:
+### Run the API, traffic replay and dashboard (three terminals)
 
 ```
 python scripts/run_api.py                                   # 1. API    -> http://127.0.0.1:8000/docs
@@ -150,6 +134,7 @@ sends test flows to the API and checks it agrees with the model run offline.
 | `GET /model-info` | Model name, classes, the exact feature names required |
 | `POST /predict` | Classify one flow (`{"features": {...}}`) |
 | `POST /predict/batch` | Classify up to 1000 flows (`{"flows": [...]}`) |
+| `POST /explain` | Classify one flow and show which features pushed the model to its answer (SHAP). Slower than `/predict`; not logged |
 | `GET /predictions/recent` | Latest logged predictions |
 | `GET /stats` | Counts per predicted class |
 
@@ -157,13 +142,33 @@ Missing features return a 422 that lists which ones; null/inf/NaN values are fil
 training medians. Every prediction is logged to `logs/predictions.db` (SQLite), which the
 dashboard reads directly, so it works even after the API has stopped.
 
+### Explaining a prediction (SHAP)
+
+For any flow, SHAP shows which features pushed the model toward the class it predicted, and by
+how much. The contributions add up exactly: baseline + all contributions = the model's output
+for that class (a probability for Random Forest, log-odds for XGBoost).
+
+```
+python scripts/explain_flow.py                      # one example flow per class
+python scripts/explain_flow.py --class "DoS Hulk"   # just one class
+```
+
+This prints a readable breakdown for each flow and saves `reports/figures/shap_examples.png` and
+`reports/metrics/shap_examples.json`. It does not need the API running. The same explanation is
+available live from the API with `POST /explain` (use `?top_k=10` for more features); the
+explainer is built on the first call, so that call is slower.
+
+Each listed feature shows its value, a z-score (how unusual that value is compared with the
+training data), and its contribution. SHAP describes what the *model* relies on, not what causes
+an attack.
+
 ### Tests
 
 ```
 pytest tests/
 ```
 
-60 tests covering data loading, preprocessing, model evaluation, the API, the replay logic, the
+78 tests covering data loading, preprocessing, model evaluation, the API, the replay logic, the
 demo launcher helpers and the dashboard. The dashboard tests run against a temporary folder and never touch your real logs or
 reports.
 
@@ -176,15 +181,15 @@ nids-project/
 ├── models/                    model.pkl, preprocessing_pipeline.joblib (not committed)
 ├── reports/                   EDA_REPORT.md, MODEL_REPORT.md, figures/, metrics/
 ├── scripts/                   run_eda, run_preprocessing, run_training, run_api,
-│                              replay_traffic, run_dashboard, run_demo, test_api_client, generate_sample_data
+│                              replay_traffic, run_dashboard, run_demo, explain_flow, test_api_client, generate_sample_data
 ├── src/
 │   ├── data/                  load_dataset.py, eda.py
 │   ├── preprocessing/         pipeline.py
-│   ├── models/                train.py, evaluate.py
-│   ├── api/                   main.py, inference.py, storage.py, schemas.py, replay_utils.py
+│   ├── models/                train.py, evaluate.py, explain_report.py
+│   ├── api/                   main.py, inference.py, explain.py, storage.py, schemas.py, replay_utils.py
 │   ├── dashboard/             app.py, data_access.py
 │   └── utils/                 paths.py, logging_config.py, demo.py
-├── docs/                      architecture.png
+├── docs/                      architecture.png, chartjs_confusion_matrix.png
 └── tests/
 ```
 
@@ -205,10 +210,13 @@ nids-project/
 - **Needs internet for the visuals.** The dashboard charts and the `/docs` page load Chart.js,
   Swagger UI and Google Fonts from CDNs, so they appear blank offline.
 - **The API is for local use.** It binds to 127.0.0.1 and has no authentication.
+- **Explanation speed depends on model size.** SHAP on a large Random Forest can take from a fraction of a
+  second to several seconds per flow, and the first `/explain` call builds the explainer. If it is too
+  slow, retrain with fewer trees or a limited depth (`training.random_forest` in `configs/config.yaml`).
 
 ## Future work
 
 - Add a validation split for model selection, and evaluate across days (train Wednesday, test Friday).
 - Add attack types beyond DoS by combining more daily CICIDS2017 files.
-- Explainability for individual alerts (SHAP).
 - Real flow extraction from captured traffic.
+- Show the SHAP explanation for a selected alert inside the dashboard.

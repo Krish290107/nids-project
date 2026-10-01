@@ -1,0 +1,83 @@
+[
+  {
+    "true_class": "DoS Hulk",
+    "predicted_class": "DoS Hulk",
+    "confidence": 1.0,
+    "is_attack": true,
+    "explanation_space": "probability",
+    "baseline": 0.16668,
+    "top_features": [
+      {
+        "feature": "Packet Length Variance",
+        "raw_value": 3421879.456,
+        "z_score": 1.318,
+        "contribution": 0.12689,
+        "direction": "toward"
+      },
+      {
+        "feature": "Avg Bwd Segment Size",
+        "raw_value": 1932.5,
+        "z_score": 1.59,
+        "contribution": 0.0912,
+        "direction": "toward"
+      },
+      {
+        "feature": "Init_Win_bytes_forward",
+        "raw_value": 251.0000000000009,
+        "z_score": -0.457,
+        "contribution": 0.08364,
+        "direction": "toward"
+      },
+      {
+        "feature": "Idle Min",
+        "raw_value": 99100000.0,
+        "z_score": 1.878,
+        "contribution": 0.07943,
+        "direction": "toward"
+      },
+      {
+        "feature": "Fwd IAT Mean",
+        "raw_value": 16500000.0,
+        "z_score": 0.931,
+        "contribution": 0.04058,
+        "direction": "toward"
+      },
+      {
+        "feature": "PSH Flag Count",
+        "raw_value": -2.7755575615628914e-17,
+        "z_score": -0.531,
+        "contribution": 0.03515,
+        "direction": "toward"
+      },
+      {
+        "feature": "Fwd IAT Total",
+        "raw_value": 99100000.0,
+        "z_score": 1.529,
+        "contribution": 0.03179,
+        "direction": "toward"
+      },
+      {
+        "feature": "Bwd IAT Total",
+        "raw_value": 155972.00000000186,
+        "z_score": -0.444,
+        "contribution": 0.03039,
+        "direction": "toward"
+      },
+      {
+        "feature": "Bwd IAT Mean",
+        "raw_value": 31194.399999999907,
+        "z_score": -0.292,
+        "contribution": 0.02804,
+        "direction": "toward"
+      },
+      {
+        "feature": "Subflow Fwd Bytes",
+        "raw_value": 404.0000000000001,
+        "z_score": -0.037,
+        "contribution": 0.02661,
+        "direction": "toward"
+      }
+    ],
+    "other_features_contribution": 0.25962
+  }
+]

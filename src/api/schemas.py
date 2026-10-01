@@ -39,3 +39,21 @@ class BatchResponse(BaseModel):
     count: int
     attacks_detected: int
     predictions: list[PredictionResponse]
+
+
+class FeatureContribution(BaseModel):
+    feature: str
+    raw_value: float | None = Field(..., description="The value in the request (null if it was missing or not finite).")
+    z_score: float = Field(..., description="How unusual the value is vs. the training data (standard deviations from the mean).")
+    contribution: float = Field(..., description="How much this feature moved the output for the predicted class.")
+    direction: str = Field(..., description="'toward' or 'against' the predicted class.")
+
+
+class ExplanationResponse(BaseModel):
+    predicted_class: str
+    confidence: float
+    is_attack: bool
+    explanation_space: str = Field(..., description="'probability' (Random Forest) or 'log-odds' (XGBoost).")
+    baseline: float = Field(..., description="The model's average output for this class. baseline + all contributions = the model's output.")
+    top_features: list[FeatureContribution]
+    other_features_contribution: float = Field(..., description="Combined contribution of all features not listed above.")
