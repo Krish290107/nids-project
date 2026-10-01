@@ -44,4 +44,7 @@ Best model: **random_forest** (selected by `macro_f1` on the held-out test set).
 
 - The test set was never resampled, so these numbers reflect the real class balance.
 - Macro F1 weights every class equally, so a model that misses a rare attack class is penalized.
+- The best model is chosen on the same held-out test set it is reported on (there is no separate validation split), so the headline numbers carry a small optimistic bias.
 - Figures: `reports/figures/confusion_matrix_*.png`, `feature_importance.png`, `model_comparison.png`.
+
+> **Low-support warning:** Heartbleed (2 test flows) — fewer than 30 test flows. Their precision/recall/F1 (even a perfect 1.0) are not statistically meaningful.

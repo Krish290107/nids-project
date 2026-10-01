@@ -118,6 +118,14 @@ def plot_model_comparison(results: dict[str, dict], out_path: Path) -> None:
     logger.info(f"Saved {out_path}")
 
 
+LOW_SUPPORT_THRESHOLD = 30  # test flows; below this, per-class scores are not statistically meaningful
+
+
+def low_support_classes(per_class: dict, threshold: int = LOW_SUPPORT_THRESHOLD) -> dict[str, int]:
+    """Classes with fewer than `threshold` test flows, e.g. {"Heartbleed": 2}."""
+    return {cls: int(m["support"]) for cls, m in per_class.items() if 0 < m["support"] < threshold}
+
+
 def write_model_report(
     results: dict[str, dict],
     train_times: dict[str, float],
@@ -163,8 +171,18 @@ def write_model_report(
         "",
         "- The test set was never resampled, so these numbers reflect the real class balance.",
         "- Macro F1 weights every class equally, so a model that misses a rare attack class is penalized.",
+        "- The best model is chosen on the same held-out test set it is reported on (there is no separate "
+        "validation split), so the headline numbers carry a small optimistic bias.",
         "- Figures: `reports/figures/confusion_matrix_*.png`, `feature_importance.png`, `model_comparison.png`.",
     ]
+    rare = low_support_classes(results[best_name]["per_class"])
+    if rare:
+        listed = ", ".join(f"{cls} ({n} test flow{'s' if n != 1 else ''})" for cls, n in rare.items())
+        lines += [
+            "",
+            f"> **Low-support warning:** {listed} — fewer than {LOW_SUPPORT_THRESHOLD} test flows. "
+            "Their precision/recall/F1 (even a perfect 1.0) are not statistically meaningful.",
+        ]
     md_path.parent.mkdir(parents=True, exist_ok=True)
     md_path.write_text("\n".join(lines), encoding="utf-8")
     logger.info(f"Saved {md_path}")

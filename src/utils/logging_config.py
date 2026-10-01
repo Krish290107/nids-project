@@ -1,6 +1,5 @@
 """Shared logging setup. Import get_logger(__name__) instead of using print()."""
 import logging
-from pathlib import Path
 
 from src.utils.paths import load_config, resolve_path, ensure_dir
 

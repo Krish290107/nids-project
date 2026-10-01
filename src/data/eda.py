@@ -211,7 +211,7 @@ def generate_eda_report(
 
     lines += [
         "",
-        f"## Highly Correlated Feature Pairs (>= threshold)",
+        "## Highly Correlated Feature Pairs (>= threshold)",
         "",
         "| Feature 1 | Feature 2 | Correlation |",
         "|---|---|---|",

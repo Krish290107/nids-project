@@ -1,145 +1,196 @@
 # ML-Based Network Intrusion Detection System (NIDS)
 
-**Author:** Krishkumar (2401CS83)
+**Author:** Krishkumar (2401CS83), B.Tech CSE, IIT Patna
 
-## Overview
+A machine learning system that classifies network traffic flows as benign or as a specific
+attack type, using flow-based statistical features (packet timing, sizes, rates). It is built
+end to end: dataset → leakage-safe preprocessing → trained model → FastAPI inference service
+→ simulated live traffic → Streamlit dashboard.
 
-A machine learning system that classifies network traffic flows as benign or
-as a specific attack type (DoS, Port Scan, Brute Force, Botnet), using
-flow-based statistical features. Built as an end-to-end project: dataset →
-trained model → API → simulated live traffic → dashboard.
+## Results (CICIDS2017, Wednesday file)
 
-## Problem
+Evaluated on a held-out test set of 122,159 flows that was never resampled, so the numbers
+reflect the real class balance.
 
-Traditional signature-based intrusion detection can't catch novel or slightly
-modified attacks. A model trained on flow statistics (packet timing, size,
-rate) can generalize better to attack patterns it hasn't seen in that exact
-form before.
+| Model | Accuracy | Macro F1 | Weighted F1 | Train time (s) |
+|---|---|---|---|---|
+| **Random Forest** (selected) | 0.9995 | 0.9974 | 0.9995 | 115 |
+| XGBoost | 0.9994 | 0.9961 | 0.9994 | 63 |
 
-## Planned Architecture
+Per-class results for the selected model:
+
+| Class | Precision | Recall | F1 | Test flows |
+|---|---|---|---|---|
+| BENIGN | 0.9999 | 0.9997 | 0.9998 | 83,407 |
+| DoS Hulk | 0.9994 | 0.9993 | 0.9993 | 34,570 |
+| DoS GoldenEye | 0.9923 | 0.9985 | 0.9954 | 2,057 |
+| DoS slowloris | 0.9981 | 0.9935 | 0.9958 | 1,077 |
+| DoS Slowhttptest | 0.9905 | 0.9971 | 0.9938 | 1,046 |
+| Heartbleed | 1.0000 | 1.0000 | 1.0000 | **2** (see limitations) |
+
+![Confusion matrix](reports/figures/confusion_matrix_random_forest.png)
+![Model comparison](reports/figures/model_comparison.png)
+
+Full tables, top features and plots: `reports/MODEL_REPORT.md`, `reports/EDA_REPORT.md`,
+`reports/figures/`.
+
+**How to read these numbers.** Near-perfect scores are normal for CICIDS2017 DoS traffic: DoS
+attacks leave very distinctive flow statistics. They show the pipeline is sound on this day of
+data, not that the model would catch attacks on a different network. See *Known limitations*.
+
+## Architecture
 
 ```
-Dataset
-  |
-Cleaning
-  |
-Preprocessing
-  |
-ML Model (Random Forest / XGBoost)
-  |
-FastAPI inference service
-  |
-Simulated live traffic (pcap replay)
-  |
-Streamlit dashboard
+Dataset (CICIDS2017 Wednesday CSV)
+   |
+EDA            inspect only, nothing is changed          scripts/run_eda.py
+   |
+Preprocessing  clean, split, scale, balance (train only) scripts/run_preprocessing.py
+   |
+Training       Random Forest vs XGBoost, best by macro F1 scripts/run_training.py
+   |
+FastAPI        POST a flow -> class + confidence         scripts/run_api.py
+   |
+Replay         held-out flows streamed to the API        scripts/replay_traffic.py
+   |
+Dashboard      live feed + model performance (Streamlit) scripts/run_dashboard.py
 ```
-
-## Current Status: Day 1-2 (Setup + Dataset + EDA)
-
-Implemented so far:
-- Project structure and configuration
-- Dataset loading (`src/data/load_dataset.py`)
-- Exploratory data analysis: missing values, infinite values, duplicates,
-  class distribution, correlation analysis, leakage-column detection
-  (`src/data/eda.py`)
-- Generated reports: `reports/EDA_REPORT.md`, `reports/eda_summary.json`
-- Generated plots: `reports/figures/`
-
-Not yet implemented (see project plan for Day 3-21): preprocessing pipeline,
-model training, FastAPI service, live-replay demo, Streamlit dashboard.
 
 ## Dataset
 
-**Primary choice: CICIDS2017** (Canadian Institute for Cybersecurity).
-Use the daily CSV subset (e.g. Wednesday or Friday), not the full multi-GB
-archive, to keep Day 1-2 fast.
+**CICIDS2017** (Canadian Institute for Cybersecurity), the Wednesday daily CSV from the
+`MachineLearningCVE` release: 692,703 flows, 79 columns, six classes:
 
-- Source: obtain from the official CICIDS2017 distribution (search
-  "CICIDS2017 dataset download" — the download link changes hosts over
-  time, so get it from the current official source rather than a fixed URL).
-- Expected files: one or more `*.csv` files such as
-  `Wednesday-workingHours.pcap_ISCX.csv`
-- Expected location: `data/raw/`
-- Approx. disk space: ~250-400 MB per daily CSV
-- Verify: after placing the file, run `python scripts/run_eda.py` — if it
-  loads and prints a row/column count, the file is good.
+| Class | Flows (raw) |
+|---|---|
+| BENIGN | 440,031 |
+| DoS Hulk | 231,073 |
+| DoS GoldenEye | 10,293 |
+| DoS slowloris | 5,796 |
+| DoS Slowhttptest | 5,499 |
+| Heartbleed | 11 |
 
-**Fallback: NSL-KDD** — smaller and cleaner if CICIDS2017 gives you loading
-trouble. If you switch, update `dataset.name` and `dataset.target_column`
-in `configs/config.yaml` (NSL-KDD's label column is typically named
-differently — check the file header and set it there).
+This file contains **only** benign traffic, four DoS variants and Heartbleed. It has no Port Scan,
+Brute Force or Botnet traffic, so the model does not detect those.
 
-**Smoke-test option:** before downloading the real dataset, run
-`python scripts/generate_sample_data.py` to generate a small synthetic
-CICIDS-shaped CSV in `data/raw/`. This lets you confirm the whole pipeline
-runs before committing to a multi-hundred-MB download. Delete the generated
-file once you have real data.
+Get the data from the official CICIDS2017 distribution (download links move, so search for the
+current one) and put the CSV in `data/raw/`. The dataset is not stored in this repo.
 
-## Installation
+## Preprocessing (and why the order matters)
+
+The rule: anything that *learns* from the data is fit on the training split only, then applied
+to the test split. Otherwise test information leaks into training and the scores are inflated.
+
+1. Drop duplicate rows: 81,909 removed (11.8%), leaving 610,794.
+2. Drop identifier columns (Flow ID, IPs, Timestamp) if present. This release of the data has
+   none, so nothing was dropped here.
+3. Encode labels and make a stratified 80/20 split (488,635 train / 122,159 test).
+4. Replace `inf` with NaN and fill with **training** medians.
+5. Drop one column from each highly correlated pair (|r| ≥ 0.90, found on training data):
+   78 features reduced to 46.
+6. StandardScaler fit on training data.
+7. SMOTE on the **training set only** (488,635 → 2,001,768 rows). The test set is never resampled.
+
+Everything the API needs at inference time (medians, scaler, exact column order, label encoder)
+is saved in `models/preprocessing_pipeline.joblib`, so live traffic goes through identical steps.
+
+## Quick start
 
 ```
-git clone <your-repo-url>
+git clone https://github.com/Krish290107/nids-project.git
 cd nids-project
 python -m venv venv
-venv\Scripts\activate
-python -m pip install --upgrade pip
+venv\Scripts\activate            # Windows   (Linux/macOS: source venv/bin/activate)
 pip install -r requirements.txt
-```
 
-## Project Structure
-
-```
-nids-project/
-├── data/
-│   ├── raw/            # original CSVs, never modified
-│   ├── interim/        # intermediate cleaned data (Day 3+)
-│   └── processed/      # final model-ready data (Day 3+)
-├── notebooks/
-├── src/
-│   ├── data/           # load_dataset.py, eda.py
-│   ├── preprocessing/  # Day 3-4
-│   ├── models/         # Day 5-7
-│   ├── api/            # Day 8-9
-│   ├── dashboard/      # Day 13-15
-│   └── utils/          # paths.py, logging_config.py
-├── scripts/
-│   ├── run_eda.py
-│   └── generate_sample_data.py
-├── tests/
-├── configs/
-│   └── config.yaml
-├── models/             # saved model files (Day 5+)
-├── reports/
-│   ├── figures/
-│   └── metrics/
-├── logs/
-├── README.md
-├── requirements.txt
-└── .gitignore
-```
-
-## Running Day 1-2
-
-```
-# optional: generate fake data to smoke-test first
-python scripts/generate_sample_data.py
-
-# place real CICIDS2017 CSV(s) in data/raw/, then:
+# put the CICIDS2017 CSV in data/raw/, then:
 python scripts/run_eda.py
+python scripts/run_preprocessing.py
+python scripts/run_training.py
+```
 
-# run tests
+No dataset yet? `python scripts/generate_sample_data.py` creates a small synthetic CSV so you can
+check that the whole pipeline runs. Delete it once you have the real data.
+
+If training is slow or runs out of memory, set `training.max_train_rows` in `configs/config.yaml`.
+
+### Run the live demo (three terminals)
+
+```
+python scripts/run_api.py                                   # 1. API    -> http://127.0.0.1:8000/docs
+python scripts/replay_traffic.py --count 200 --interval 0.1 # 2. stream held-out flows into the API
+python scripts/run_dashboard.py                             # 3. dashboard -> http://localhost:8501
+```
+
+`replay_traffic.py` also accepts `--loop` (stream until Ctrl+C). `scripts/test_api_client.py`
+sends test flows to the API and checks it agrees with the model run offline.
+
+### API endpoints
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /health` | Is the service up and a model loaded |
+| `GET /model-info` | Model name, classes, the exact feature names required |
+| `POST /predict` | Classify one flow (`{"features": {...}}`) |
+| `POST /predict/batch` | Classify up to 1000 flows (`{"flows": [...]}`) |
+| `GET /predictions/recent` | Latest logged predictions |
+| `GET /stats` | Counts per predicted class |
+
+Missing features return a 422 that lists which ones; null/inf/NaN values are filled with the
+training medians. Every prediction is logged to `logs/predictions.db` (SQLite), which the
+dashboard reads directly, so it works even after the API has stopped.
+
+### Tests
+
+```
 pytest tests/
 ```
 
-Outputs land in `reports/EDA_REPORT.md`, `reports/eda_summary.json`, and
-`reports/figures/`.
+54 tests covering data loading, preprocessing, model evaluation, the API, the replay logic and the
+dashboard. The dashboard tests run against a temporary folder and never touch your real logs or
+reports.
 
-## Future Work
+## Project structure
 
-- Day 3-4: preprocessing pipeline (cleaning, encoding, scaling, class balancing)
-- Day 5-7: train Random Forest / XGBoost, evaluate per-class precision/recall/F1
-- Day 8-9: FastAPI inference service
-- Day 10-12: pcap-replay live-traffic simulation
-- Day 13-15: Streamlit dashboard
-- Day 16-18: documentation polish, demo recording
-- Day 19-21: buffer, optional SHAP explainability / alerting
+```
+nids-project/
+├── configs/config.yaml        all paths and settings; nothing is hardcoded
+├── data/{raw,interim,processed}   datasets (not committed)
+├── models/                    model.pkl, preprocessing_pipeline.joblib (not committed)
+├── reports/                   EDA_REPORT.md, MODEL_REPORT.md, figures/, metrics/
+├── scripts/                   run_eda, run_preprocessing, run_training, run_api,
+│                              replay_traffic, run_dashboard, test_api_client, generate_sample_data
+├── src/
+│   ├── data/                  load_dataset.py, eda.py
+│   ├── preprocessing/         pipeline.py
+│   ├── models/                train.py, evaluate.py
+│   ├── api/                   main.py, inference.py, storage.py, schemas.py, replay_utils.py
+│   ├── dashboard/             app.py, data_access.py
+│   └── utils/                 paths.py, logging_config.py
+└── tests/
+```
+
+## Known limitations
+
+- **Heartbleed is not a real result.** The whole file has only 11 Heartbleed flows, and the test
+  set contains **2** of them. A perfect score on 2 flows means nothing, and the handful left for
+  training (at most 9, fewer if duplicates were removed) is expanded by SMOTE into hundreds of
+  thousands of synthetic rows. Treat Heartbleed as unvalidated.
+- **One day of one dataset.** Results do not show how the model behaves on other days, other
+  attack types, or a real network. A fair next test is training on Wednesday and evaluating on a
+  different day.
+- **Model selection uses the test set.** The better of the two models is chosen on the same
+  held-out set it is reported on (there is no separate validation split), which adds a small
+  optimistic bias.
+- **The replay is a simulation.** It streams held-out, already-extracted flow records into the
+  API. It is not live packet capture, and there is no flow extractor (such as CICFlowMeter) here.
+- **Needs internet for the visuals.** The dashboard charts and the `/docs` page load Chart.js,
+  Swagger UI and Google Fonts from CDNs, so they appear blank offline.
+- **The API is for local use.** It binds to 127.0.0.1 and has no authentication.
+
+## Future work
+
+- Add a validation split for model selection, and evaluate across days (train Wednesday, test Friday).
+- Add attack types beyond DoS by combining more daily CICIDS2017 files.
+- Explainability for individual alerts (SHAP).
+- Real flow extraction from captured traffic.

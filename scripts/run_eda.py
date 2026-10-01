@@ -27,7 +27,7 @@ def main() -> None:
     analysis_cfg = config["analysis"]
 
     figures_dir = ensure_dir(resolve_path(report_cfg["figures_dir"]))
-    metrics_dir = ensure_dir(resolve_path(report_cfg["metrics_dir"]))
+    ensure_dir(resolve_path(report_cfg["metrics_dir"]))
 
     logger.info("=== Day 1-2: Loading dataset ===")
     df = load_dataset()
