@@ -40,6 +40,8 @@ data, not that the model would catch attacks on a different network. See *Known 
 
 ## Architecture
 
+![Architecture](docs/architecture.png)
+
 ```
 Dataset (CICIDS2017 Wednesday CSV)
    |
@@ -94,6 +96,19 @@ to the test split. Otherwise test information leaks into training and the scores
 Everything the API needs at inference time (medians, scaler, exact column order, label encoder)
 is saved in `models/preprocessing_pipeline.joblib`, so live traffic goes through identical steps.
 
+## Demo
+
+One command starts the API, the dashboard and a traffic replay together (after you have run
+preprocessing and training once, see *Quick start*):
+
+```
+python scripts/run_demo.py
+```
+
+It opens the dashboard in your browser and streams held-out flows into the API until you press
+Ctrl+C, which stops everything cleanly. Useful options: `--count 300` (send 300 flows, then keep
+the servers up) and `--interval 0.2` (faster arrival).
+
 ## Quick start
 
 ```
@@ -114,7 +129,9 @@ check that the whole pipeline runs. Delete it once you have the real data.
 
 If training is slow or runs out of memory, set `training.max_train_rows` in `configs/config.yaml`.
 
-### Run the live demo (three terminals)
+### Run the live demo step by step (three terminals)
+
+The same thing as `python scripts/run_demo.py`, but with each part in its own terminal:
 
 ```
 python scripts/run_api.py                                   # 1. API    -> http://127.0.0.1:8000/docs
@@ -146,8 +163,8 @@ dashboard reads directly, so it works even after the API has stopped.
 pytest tests/
 ```
 
-54 tests covering data loading, preprocessing, model evaluation, the API, the replay logic and the
-dashboard. The dashboard tests run against a temporary folder and never touch your real logs or
+60 tests covering data loading, preprocessing, model evaluation, the API, the replay logic, the
+demo launcher helpers and the dashboard. The dashboard tests run against a temporary folder and never touch your real logs or
 reports.
 
 ## Project structure
@@ -159,14 +176,15 @@ nids-project/
 ├── models/                    model.pkl, preprocessing_pipeline.joblib (not committed)
 ├── reports/                   EDA_REPORT.md, MODEL_REPORT.md, figures/, metrics/
 ├── scripts/                   run_eda, run_preprocessing, run_training, run_api,
-│                              replay_traffic, run_dashboard, test_api_client, generate_sample_data
+│                              replay_traffic, run_dashboard, run_demo, test_api_client, generate_sample_data
 ├── src/
 │   ├── data/                  load_dataset.py, eda.py
 │   ├── preprocessing/         pipeline.py
 │   ├── models/                train.py, evaluate.py
 │   ├── api/                   main.py, inference.py, storage.py, schemas.py, replay_utils.py
 │   ├── dashboard/             app.py, data_access.py
-│   └── utils/                 paths.py, logging_config.py
+│   └── utils/                 paths.py, logging_config.py, demo.py
+├── docs/                      architecture.png
 └── tests/
 ```
 
