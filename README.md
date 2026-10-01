@@ -28,8 +28,8 @@ Per-class results for the selected model:
 | DoS Slowhttptest | 0.9905 | 0.9971 | 0.9938 | 1,046 |
 | Heartbleed | 1.0000 | 1.0000 | 1.0000 | **2** (see limitations) |
 
-![Confusion matrix](reports/figures/confusion_matrix_random_forest.png)
-![Model comparison](reports/figures/model_comparison.png)
+> **Note:** We now use interactive **Chart.js** graphs instead of static images! 
+> Start the live dashboard (`python scripts/run_dashboard.py`) to explore the interactive Confusion Matrix, Model Comparison, and Feature Importance charts with custom scrollbars and hover effects.
 
 Full tables, top features and plots: `reports/MODEL_REPORT.md`, `reports/EDA_REPORT.md`,
 `reports/figures/`.
