@@ -92,10 +92,10 @@ def test_low_support_classes_flags_tiny_classes():
 
     per_class = {
         "BENIGN": {"support": 5000},
-        "Heartbleed": {"support": 2},
+        "RareClass": {"support": 2},
         "Absent": {"support": 0},  # not in the test set at all: not a "low support" score
     }
-    assert low_support_classes(per_class) == {"Heartbleed": 2}
+    assert low_support_classes(per_class) == {"RareClass": 2}
 
 
 def test_model_report_includes_low_support_warning(tmp_path):
@@ -103,11 +103,11 @@ def test_model_report_includes_low_support_warning(tmp_path):
 
     per_class = {
         "BENIGN": {"precision": 1.0, "recall": 1.0, "f1": 1.0, "support": 5000},
-        "Heartbleed": {"precision": 1.0, "recall": 1.0, "f1": 1.0, "support": 2},
+        "RareClass": {"precision": 1.0, "recall": 1.0, "f1": 1.0, "support": 2},
     }
     results = {"rf": {"accuracy": 1.0, "macro_f1": 1.0, "weighted_f1": 1.0, "per_class": per_class}}
     out = tmp_path / "report.md"
     write_model_report(results, {"rf": 1.0}, "rf", "macro_f1", {}, out)
     text = out.read_text(encoding="utf-8")
-    assert "Low-support warning" in text and "Heartbleed (2 test flows)" in text
+    assert "Low-support warning" in text and "RareClass (2 test flows)" in text
     assert "no separate validation split" in text

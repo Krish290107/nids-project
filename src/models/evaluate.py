@@ -122,7 +122,7 @@ LOW_SUPPORT_THRESHOLD = 30  # test flows; below this, per-class scores are not s
 
 
 def low_support_classes(per_class: dict, threshold: int = LOW_SUPPORT_THRESHOLD) -> dict[str, int]:
-    """Classes with fewer than `threshold` test flows, e.g. {"Heartbleed": 2}."""
+    """Classes with fewer than `threshold` test flows, e.g. {"RareClass": 2}."""
     return {cls: int(m["support"]) for cls, m in per_class.items() if 0 < m["support"] < threshold}
 
 

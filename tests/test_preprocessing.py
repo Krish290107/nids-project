@@ -83,3 +83,38 @@ def test_smote_balances_classes():
     )
     counts = pd.Series(y_bal).value_counts()
     assert counts[0] == counts[1]
+
+
+def test_drop_classes_removes_rows_and_reports_counts():
+    df = pd.DataFrame({"f": range(10), "Label": ["BENIGN"] * 6 + ["DoS"] * 3 + ["Rare"]})
+    kept, removed = prep.drop_classes(df, "Label", ["Rare"])
+    assert removed == {"Rare": 1}
+    assert len(kept) == 9 and "Rare" not in set(kept["Label"])
+    assert list(kept.index) == list(range(9))  # index reset
+
+
+def test_drop_classes_ignores_case_and_spaces():
+    df = pd.DataFrame({"f": range(8), "Label": ["BENIGN"] * 4 + ["DoS"] * 2 + [" rare ", "RARE"]})
+    kept, removed = prep.drop_classes(df, "Label", ["Rare"])
+    assert sum(removed.values()) == 2 and len(kept) == 6
+
+
+def test_drop_classes_unknown_name_is_only_a_warning():
+    df = pd.DataFrame({"f": range(4), "Label": ["BENIGN", "BENIGN", "DoS", "DoS"]})
+    kept, removed = prep.drop_classes(df, "Label", ["Heartbleed"])
+    assert removed == {} and len(kept) == 4
+
+
+def test_drop_classes_empty_or_none_changes_nothing():
+    df = pd.DataFrame({"f": range(4), "Label": ["BENIGN", "BENIGN", "DoS", "DoS"]})
+    for setting in ([], None):
+        kept, removed = prep.drop_classes(df, "Label", setting)
+        assert removed == {} and len(kept) == 4
+
+
+def test_drop_classes_refuses_to_leave_fewer_than_two_classes():
+    import pytest
+
+    df = pd.DataFrame({"f": range(4), "Label": ["BENIGN", "BENIGN", "DoS", "DoS"]})
+    with pytest.raises(ValueError, match="fewer than 2 classes"):
+        prep.drop_classes(df, "Label", ["DoS"])

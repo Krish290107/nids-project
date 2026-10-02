@@ -8,6 +8,7 @@ inflates your reported metrics later.
 
 Pipeline:
     raw df
+      -> drop classes listed in preprocessing.drop_classes (e.g. too few examples to learn)
       -> drop exact duplicate rows
       -> drop leakage-prone columns (Flow ID, IPs, Timestamp)
       -> split into train/test (stratified on label)
@@ -33,6 +34,33 @@ from src.data.eda import identify_leakage_columns
 from src.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+def drop_classes(df: pd.DataFrame, target_col: str, classes: list[str] | None) -> tuple[pd.DataFrame, dict[str, int]]:
+    """Remove every row whose label is in `classes` (case and surrounding spaces ignored).
+
+    Used for classes with too few examples to train or test on honestly. Returns the
+    remaining rows and {label: rows removed}. A name that isn't in the data only logs a
+    warning, so the same config works on any dataset; removing so much that fewer than
+    two classes remain is an error.
+    """
+    if not classes:
+        return df, {}
+    labels = df[target_col].astype(str).str.strip()
+    present = set(labels.str.lower())
+    wanted = {str(c).strip().lower() for c in classes}
+    for name in classes:
+        if str(name).strip().lower() not in present:
+            logger.warning(f"drop_classes: '{name}' is not in the data, nothing removed for it")
+
+    mask = labels.str.lower().isin(wanted)
+    removed = {str(k): int(v) for k, v in labels[mask].value_counts().items()}
+    kept = df.loc[~mask].reset_index(drop=True)
+    if kept[target_col].nunique() < 2:
+        raise ValueError(f"drop_classes={list(classes)} would leave fewer than 2 classes to learn from")
+    for name, count in removed.items():
+        logger.info(f"Dropped class '{name}': {count:,} rows removed")
+    return kept, removed
 
 
 def drop_duplicate_rows(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:

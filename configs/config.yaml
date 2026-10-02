@@ -35,6 +35,7 @@ logging:
 preprocessing:
   test_size: 0.20
   random_state: 42
+  drop_classes: [Heartbleed]      # labels to remove before training; [] keeps every class
   drop_leakage_columns: true
   drop_correlated_features: true
   correlation_threshold: 0.90

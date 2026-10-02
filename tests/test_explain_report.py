@@ -8,7 +8,7 @@ import pytest
 
 from src.models.explain_report import format_explanation, pick_example_indices, plot_explanations
 
-CLASS_NAMES = ["BENIGN", "DoS", "Heartbleed", "Absent"]
+CLASS_NAMES = ["BENIGN", "DoS", "RareClass", "Absent"]
 Y = np.array([0] * 50 + [1] * 30 + [2] * 2)  # class 3 ("Absent") has no test rows
 
 
@@ -26,7 +26,7 @@ def make_result(predicted="DoS"):
 
 def test_pick_one_per_class_skips_classes_with_no_test_rows():
     picks = pick_example_indices(Y, CLASS_NAMES, per_class=1, seed=0)
-    assert [name for _, name in picks] == ["BENIGN", "DoS", "Heartbleed"]
+    assert [name for _, name in picks] == ["BENIGN", "DoS", "RareClass"]
     for index, name in picks:
         assert CLASS_NAMES[Y[index]] == name
 
@@ -35,7 +35,7 @@ def test_pick_is_reproducible_and_caps_at_available_rows():
     a = pick_example_indices(Y, CLASS_NAMES, per_class=5, seed=1)
     b = pick_example_indices(Y, CLASS_NAMES, per_class=5, seed=1)
     assert a == b
-    assert sum(1 for _, name in a if name == "Heartbleed") == 2  # only 2 exist
+    assert sum(1 for _, name in a if name == "RareClass") == 2  # only 2 exist
 
 
 def test_pick_only_selected_classes_and_rejects_unknown():

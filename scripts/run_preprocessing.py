@@ -31,6 +31,9 @@ def main() -> None:
     df = load_dataset()
     target_col = detect_target_column(df, ds_cfg["target_column"])
 
+    rows_loaded = int(len(df))
+    df, dropped_classes = prep.drop_classes(df, target_col, pp_cfg.get("drop_classes", []))
+
     df, n_duplicates_removed = prep.drop_duplicate_rows(df)
 
     dropped_leakage: list[str] = []
@@ -85,6 +88,8 @@ def main() -> None:
     )
 
     summary = {
+        "rows_loaded": rows_loaded,
+        "dropped_classes": dropped_classes,
         "rows_after_dedup": int(len(df)),
         "duplicates_removed": int(n_duplicates_removed),
         "dropped_leakage_columns": dropped_leakage,
