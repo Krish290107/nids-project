@@ -1,222 +1,126 @@
-# ML-Based Network Intrusion Detection System (NIDS)
+# Network Intrusion Detection System (NIDS)
 
-**Author:** Krishkumar (2401CS83), B.Tech CSE, IIT Patna
-
-A machine learning system that classifies network traffic flows as benign or as a specific
-attack type, using flow-based statistical features (packet timing, sizes, rates). It is built
-end to end: dataset → leakage-safe preprocessing → trained model → FastAPI inference service
-→ simulated live traffic → Streamlit dashboard.
-
-## Results (CICIDS2017, Wednesday file)
-
-Evaluated on a held-out test set of 122,159 flows that was never resampled, so the numbers
-reflect the real class balance.
-
-| Model | Accuracy | Macro F1 | Weighted F1 | Train time (s) |
-|---|---|---|---|---|
-| **Random Forest** (selected) | 0.9995 | 0.9974 | 0.9995 | 115 |
-| XGBoost | 0.9994 | 0.9961 | 0.9994 | 63 |
-
-Per-class results for the selected model:
-
-| Class | Precision | Recall | F1 | Test flows |
-|---|---|---|---|---|
-| BENIGN | 0.9999 | 0.9997 | 0.9998 | 83,407 |
-| DoS Hulk | 0.9994 | 0.9993 | 0.9993 | 34,570 |
-| DoS GoldenEye | 0.9923 | 0.9985 | 0.9954 | 2,057 |
-| DoS slowloris | 0.9981 | 0.9935 | 0.9958 | 1,077 |
-| DoS Slowhttptest | 0.9905 | 0.9971 | 0.9938 | 1,046 |
-| Heartbleed | 1.0000 | 1.0000 | 1.0000 | **2** (see limitations) |
-
-![Confusion matrix (row-normalized), from the dashboard](docs/chartjs_confusion_matrix.png)
-
-Full tables, top features and plots: `reports/MODEL_REPORT.md`, `reports/EDA_REPORT.md`,
-`reports/figures/`.
-
-**How to read these numbers.** Near-perfect scores are normal for CICIDS2017 DoS traffic: DoS
-attacks leave very distinctive flow statistics. They show the pipeline is sound on this day of
-data, not that the model would catch attacks on a different network. See *Known limitations*.
-
-## Architecture
+A machine-learning system that watches network traffic and says whether it is normal or an attack, and if it is an attack, *which kind*. I built it end to end as a student project at IIT Patna: data analysis, model training, a live prediction API, a dashboard that shows alerts as they arrive, and explanations of *why* a flow was flagged.
 
 ![Architecture](docs/architecture.png)
 
-```
-Dataset (CICIDS2017 Wednesday CSV)
-   |
-EDA            inspect only, nothing is changed          scripts/run_eda.py
-   |
-Preprocessing  clean, split, scale, balance (train only) scripts/run_preprocessing.py
-   |
-Training       Random Forest vs XGBoost, best by macro F1 scripts/run_training.py
-   |
-FastAPI        POST a flow -> class + confidence         scripts/run_api.py
-   |
-Replay         held-out flows streamed to the API        scripts/replay_traffic.py
-   |
-Dashboard      live feed + model performance (Streamlit) scripts/run_dashboard.py
-```
+## Results
+
+<!-- RESULTS:START -->
+Results appear here once you have trained the model. They are also in `reports/MODEL_REPORT.md` and on the dashboard's **Model Performance** tab.
+<!-- RESULTS:END -->
+
+Near-perfect scores are normal on this dataset because DoS attacks leave very distinctive traffic patterns. They show the pipeline is sound on this data, not that the model would work on another network (see [Limitations](#limitations)).
+
+## How it works
+
+Traffic is summarised as **flows**: one flow is one conversation between two computers, described by about 78 numbers (duration, packets per second, average packet size, and so on). The model learns which numbers look like which kind of traffic.
+
+1. **Look first (EDA).** Count missing values, infinities, duplicates and class sizes. This only reads the data.
+2. **Prepare it carefully.** Remove unwanted classes and duplicate rows, split 80/20, fill gaps with medians, drop near-duplicate columns, scale the numbers, and balance rare attack classes with **SMOTE** (it creates extra synthetic examples). The golden rule: everything *learned* from data (medians, scaler, SMOTE) is learned from the training part only, and the test part is never touched. Otherwise test information leaks into training and the scores look better than they really are.
+3. **Train two models and pick the better one.** Random Forest and XGBoost are compared on **macro F1**, which counts every class equally. Plain accuracy would hide a missed rare attack, because most traffic is normal.
+4. **Serve it.** A FastAPI service loads the model and the saved preparation steps, so live flows are treated exactly like training flows. Every prediction is logged to a small SQLite database.
+5. **Replay traffic.** Real packet sniffing is unreliable, so held-out test flows are sent to the API one at a time, like live traffic.
+6. **Watch and explain.** A Streamlit dashboard reads the log. **SHAP** shows which features pushed a flow toward its predicted class, and the contributions add up exactly to the model's output.
 
 ## Dataset
 
-**CICIDS2017** (Canadian Institute for Cybersecurity), the Wednesday daily CSV from the
-`MachineLearningCVE` release: 692,703 flows, 79 columns, six classes:
+[CICIDS2017](https://www.unb.ca/cic/datasets/ids-2017.html) (Canadian Institute for Cybersecurity), the **Wednesday** file: 692,703 flows, 79 columns. It holds normal traffic, four DoS attack types (Hulk, GoldenEye, slowloris, Slowhttptest) and **Heartbleed**.
 
-| Class | Flows (raw) |
-|---|---|
-| BENIGN | 440,031 |
-| DoS Hulk | 231,073 |
-| DoS GoldenEye | 10,293 |
-| DoS slowloris | 5,796 |
-| DoS Slowhttptest | 5,499 |
-| Heartbleed | 11 |
+**Heartbleed is removed.** The file has only 11 Heartbleed flows, too few to train on or test on honestly (a "perfect" score on 2 test flows means nothing). It is excluded by one line in `configs/config.yaml`: `drop_classes: [Heartbleed]`. Set it to `[]` to keep it. The EDA report describes the raw file, which is where you can still see those 11 rows.
 
-This file contains **only** benign traffic, four DoS variants and Heartbleed. It has no Port Scan,
-Brute Force or Botnet traffic, so the model does not detect those.
+## Setup
 
-Get the data from the official CICIDS2017 distribution (download links move, so search for the
-current one) and put the CSV in `data/raw/`. The dataset is not stored in this repo.
+You need **Python 3.12 or newer** from [python.org](https://www.python.org/downloads/) (tick **Add python.exe to PATH** when installing; tested on 3.12 and 3.14), an internet connection to install the packages, and a few minutes for training.
 
-## Preprocessing (and why the order matters)
-
-The rule: anything that *learns* from the data is fit on the training split only, then applied
-to the test split. Otherwise test information leaks into training and the scores are inflated.
-
-1. Drop duplicate rows: 81,909 removed (11.8%), leaving 610,794.
-2. Drop identifier columns (Flow ID, IPs, Timestamp) if present. This release of the data has
-   none, so nothing was dropped here.
-3. Encode labels and make a stratified 80/20 split (488,635 train / 122,159 test).
-4. Replace `inf` with NaN and fill with **training** medians.
-5. Drop one column from each highly correlated pair (|r| ≥ 0.90, found on training data):
-   78 features reduced to 46.
-6. StandardScaler fit on training data.
-7. SMOTE on the **training set only** (488,635 → 2,001,768 rows). The test set is never resampled.
-
-Everything the API needs at inference time (medians, scaler, exact column order, label encoder)
-is saved in `models/preprocessing_pipeline.joblib`, so live traffic goes through identical steps.
-
-## Quick start
-
+**1. Install**
 ```
-git clone https://github.com/Krish290107/nids-project.git
-cd nids-project
 python -m venv venv
-venv\Scripts\activate            # Windows   (Linux/macOS: source venv/bin/activate)
+venv\Scripts\activate
 pip install -r requirements.txt
+```
+On Mac/Linux use `source venv/bin/activate`. The virtual environment is optional: if it won't create, run `python -m pip install -r requirements.txt` and skip the activate line. If PowerShell blocks activation, run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned` first.
 
-# put the CICIDS2017 CSV in data/raw/, then:
-python scripts/run_eda.py
-python scripts/run_preprocessing.py
-python scripts/run_training.py
+**2. Get the data.** From the [CICIDS2017 page](https://www.unb.ca/cic/datasets/ids-2017.html) download `MachineLearningCSV.zip` (you may need to fill in a short form). Put **only the Wednesday CSV** in `data/raw/`. Every CSV in that folder is loaded, so extra files change the results. No data yet? `python scripts/generate_sample_data.py` makes a small fake CSV to try things out; delete it before using real data.
+
+**3. Check it works:** `pytest tests/` should end with `passed` and no failures.
+
+## Use
+
+**Build the model (once).**
+```
+python scripts/run_eda.py            # optional: reports on the raw data
+python scripts/run_preprocessing.py  # clean, split, scale, balance
+python scripts/run_training.py       # train both models, keep the best
+python scripts/update_readme.py      # optional: write your results into this README
 ```
 
-No dataset yet? `python scripts/generate_sample_data.py` creates a small synthetic CSV so you can
-check that the whole pipeline runs. Delete it once you have the real data.
-
-If training is slow or runs out of memory, set `training.max_train_rows` in `configs/config.yaml`.
-
-### Run the API, traffic replay and dashboard (three terminals)
-
+**Run the live system.** Open three terminals (each with the environment activated):
 ```
-python scripts/run_api.py                                   # 1. API    -> http://127.0.0.1:8000/docs
-python scripts/replay_traffic.py --count 200 --interval 0.1 # 2. stream held-out flows into the API
-python scripts/run_dashboard.py                             # 3. dashboard -> http://localhost:8501
+python scripts/run_api.py                                    # API docs: http://127.0.0.1:8000/docs
+python scripts/replay_traffic.py --count 200 --interval 0.1  # send test flows to the API
+python scripts/run_dashboard.py                              # dashboard: http://localhost:8501
 ```
+`python scripts/run_demo.py` starts all three together; Ctrl+C stops them. On the dashboard, tick **Auto-refresh** to watch alerts arrive.
 
-`replay_traffic.py` also accepts `--loop` (stream until Ctrl+C). `scripts/test_api_client.py`
-sends test flows to the API and checks it agrees with the model run offline.
+**Explain predictions.** `python scripts/explain_flow.py` prints, for one example flow per class, which features pushed the model to its answer, and saves a chart to `reports/figures/`. Use `--class "DoS Hulk"` for one class.
 
-### API endpoints
+**API endpoints** (try them on the `/docs` page):
 
-| Endpoint | Purpose |
+| Endpoint | What it does |
 |---|---|
 | `GET /health` | Is the service up and a model loaded |
-| `GET /model-info` | Model name, classes, the exact feature names required |
-| `POST /predict` | Classify one flow (`{"features": {...}}`) |
-| `POST /predict/batch` | Classify up to 1000 flows (`{"flows": [...]}`) |
-| `POST /explain` | Classify one flow and show which features pushed the model to its answer (SHAP). Slower than `/predict`; not logged |
-| `GET /predictions/recent` | Latest logged predictions |
-| `GET /stats` | Counts per predicted class |
+| `GET /model-info` | Classes and the exact feature names the model needs |
+| `POST /predict` | Classify one flow: `{"features": {...}}` |
+| `POST /predict/batch` | Classify up to 1000 flows: `{"flows": [...]}` |
+| `POST /explain` | Classify one flow and show what drove the answer (SHAP) |
+| `GET /predictions/recent`, `GET /stats` | The logged predictions and counts per class |
 
-Missing features return a 422 that lists which ones; null/inf/NaN values are filled with the
-training medians. Every prediction is logged to `logs/predictions.db` (SQLite), which the
-dashboard reads directly, so it works even after the API has stopped.
+Missing features give a clear 422 error; missing or infinite values are filled with training medians. `python scripts/test_api_client.py` sends real test flows to the API and checks it agrees with the model run offline.
 
-### Explaining a prediction (SHAP)
+**Settings** live in `configs/config.yaml`. Top-level names (`preprocessing:`, `training:`) must start at the left edge, with their settings indented underneath.
 
-For any flow, SHAP shows which features pushed the model toward the class it predicted, and by
-how much. The contributions add up exactly: baseline + all contributions = the model's output
-for that class (a probability for Random Forest, log-odds for XGBoost).
+| Setting | Meaning |
+|---|---|
+| `preprocessing.drop_classes` | Classes to remove before training |
+| `preprocessing.balancing_method` | `smote`, `class_weight` or `none` |
+| `training.max_train_rows` | Set e.g. `300000` if training is slow or runs out of memory |
+| `training.selection_metric` | How the best model is chosen (`macro_f1` by default) |
+| `replay.interval_seconds`, `api.port`, `dashboard.port` | Replay speed and ports |
 
-```
-python scripts/explain_flow.py                      # one example flow per class
-python scripts/explain_flow.py --class "DoS Hulk"   # just one class
-```
+## Troubleshooting
 
-This prints a readable breakdown for each flow and saves `reports/figures/shap_examples.png` and
-`reports/metrics/shap_examples.json`. It does not need the API running. The same explanation is
-available live from the API with `POST /explain` (use `?top_k=10` for more features); the
-explainer is built on the first call, so that call is slower.
+| Problem | Fix |
+|---|---|
+| `Error: [WinError 2]` when creating the venv | Delete the half-made `venv` folder and try `py -m venv venv`. If it still fails, reinstall Python from python.org (a Microsoft Store or damaged install can cause it), or skip the venv |
+| `KeyError: 'training'` (or `'api'`, `'replay'`) | That section is missing or indented in `configs/config.yaml` |
+| `Required file not found ... model.pkl` | Run `run_preprocessing.py`, then `run_training.py` |
+| Results contain fake classes (BENIGN, PortScan, Botnet...) | Delete the sample CSV from `data/raw/` and rerun |
+| Dashboard says "No predictions logged yet" | Start the API, then run `replay_traffic.py` |
+| Dashboard charts or `/docs` are blank | They load libraries from the internet; connect and refresh |
+| `Address already in use` | An old run is still going; close it or change the port in the config |
+| Training is very slow or out of memory | Set `training.max_train_rows: 300000` |
 
-Each listed feature shows its value, a z-score (how unusual that value is compared with the
-training data), and its contribution. SHAP describes what the *model* relies on, not what causes
-an attack.
-
-### Tests
-
-```
-pytest tests/
-```
-
-78 tests covering data loading, preprocessing, model evaluation, the API, the replay logic, the
-demo launcher helpers and the dashboard. The dashboard tests run against a temporary folder and never touch your real logs or
-reports.
-
-## Project structure
+## Project layout
 
 ```
-nids-project/
-├── configs/config.yaml        all paths and settings; nothing is hardcoded
-├── data/{raw,interim,processed}   datasets (not committed)
-├── models/                    model.pkl, preprocessing_pipeline.joblib (not committed)
-├── reports/                   EDA_REPORT.md, MODEL_REPORT.md, figures/, metrics/
-├── scripts/                   run_eda, run_preprocessing, run_training, run_api,
-│                              replay_traffic, run_dashboard, run_demo, explain_flow, test_api_client, generate_sample_data
-├── src/
-│   ├── data/                  load_dataset.py, eda.py
-│   ├── preprocessing/         pipeline.py
-│   ├── models/                train.py, evaluate.py, explain_report.py
-│   ├── api/                   main.py, inference.py, explain.py, storage.py, schemas.py, replay_utils.py
-│   ├── dashboard/             app.py, data_access.py
-│   └── utils/                 paths.py, logging_config.py, demo.py
-├── docs/                      architecture.png, chartjs_confusion_matrix.png
-└── tests/
+configs/config.yaml    every path and setting
+data/                  raw/ (put the CSV here), processed/ (created for you)
+models/                saved model and preprocessing steps (created for you)
+reports/               EDA and model reports, figures, metrics
+scripts/               the commands above, plus test_api_client.py and generate_sample_data.py
+src/                   data/, preprocessing/, models/, api/, dashboard/, utils/
+tests/                 pytest tests for all of it
 ```
 
-## Known limitations
+## Limitations
 
-- **Heartbleed is not a real result.** The whole file has only 11 Heartbleed flows, and the test
-  set contains **2** of them. A perfect score on 2 flows means nothing, and the handful left for
-  training (at most 9, fewer if duplicates were removed) is expanded by SMOTE into hundreds of
-  thousands of synthetic rows. Treat Heartbleed as unvalidated.
-- **One day of one dataset.** Results do not show how the model behaves on other days, other
-  attack types, or a real network. A fair next test is training on Wednesday and evaluating on a
-  different day.
-- **Model selection uses the test set.** The better of the two models is chosen on the same
-  held-out set it is reported on (there is no separate validation split), which adds a small
-  optimistic bias.
-- **The replay is a simulation.** It streams held-out, already-extracted flow records into the
-  API. It is not live packet capture, and there is no flow extractor (such as CICFlowMeter) here.
-- **Needs internet for the visuals.** The dashboard charts and the `/docs` page load Chart.js,
-  Swagger UI and Google Fonts from CDNs, so they appear blank offline.
-- **The API is for local use.** It binds to 127.0.0.1 and has no authentication.
-- **Explanation speed depends on model size.** SHAP on a large Random Forest can take from a fraction of a
-  second to several seconds per flow, and the first `/explain` call builds the explainer. If it is too
-  slow, retrain with fewer trees or a limited depth (`training.random_forest` in `configs/config.yaml`).
+- **One day of one dataset.** It has not been tested on other days, other attacks or a real network.
+- **The best model is chosen on the same test set it is scored on** (no separate validation split), which adds a small optimistic bias.
+- **The replay is a simulation.** There is no packet capture or flow extractor; it streams recorded flow records.
+- **SHAP explains the model, not the cause of an attack.** Explaining one flow takes longer on a bigger forest.
+- **The API is for local use:** it listens on 127.0.0.1 and has no authentication.
 
-## Future work
+## Credits
 
-- Add a validation split for model selection, and evaluate across days (train Wednesday, test Friday).
-- Add attack types beyond DoS by combining more daily CICIDS2017 files.
-- Real flow extraction from captured traffic.
-- Show the SHAP explanation for a selected alert inside the dashboard.
+Author: Krishkumar (2401CS83), B.Tech CSE, IIT Patna. Dataset: Sharafaldin, Lashkari and Ghorbani, "Toward Generating a New Intrusion Detection Dataset and Intrusion Traffic Characterization", ICISSP 2018.
